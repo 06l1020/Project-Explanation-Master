@@ -748,6 +748,10 @@ class MainWindow:
                 self.base_url_var.set(base_url)
                 self.model_name_var.set(model_name)
                 
+                # 如果已有orchestrator，重新初始化以应用新配置
+                if self.orchestrator is not None:
+                    self._reinit_orchestrator()
+                
                 config_window.destroy()
                 
             except Exception as e:
@@ -831,6 +835,51 @@ class MainWindow:
             self.base_url_var.set(config.base_url)
             self.model_name_var.set(config.model_name)
             self.status_var.set(f"✅ 已加载配置: {config.name}")
+            
+            # 如果已有orchestrator，需要重新初始化以应用新配置
+            if self.orchestrator is not None:
+                self._reinit_orchestrator()
+    
+    def _reinit_orchestrator(self):
+        """重新初始化编排器以应用新配置"""
+        if not self.project_path:
+            return
+        
+        try:
+            # 关闭旧的orchestrator，释放资源
+            if self.orchestrator is not None:
+                self.orchestrator.close()
+            
+            api_key = self.api_key_var.get() or os.getenv("OPENAI_API_KEY")
+            
+            if not api_key:
+                messagebox.showwarning(
+                    "警告",
+                    "请先配置API密钥！\n点击'管理配置'按钮进行设置。"
+                )
+                return
+            
+            kwargs = {
+                'project_path': self.project_path,
+                'api_key': api_key,
+                'model_name': self.model_name_var.get()
+            }
+            
+            if self.base_url_var.get():
+                kwargs['base_url'] = self.base_url_var.get()
+            
+            self.orchestrator = AgentOrchestrator(**kwargs)
+            
+            # 记录配置使用
+            config_name = self.config_name_var.get()
+            if config_name:
+                self.config_manager.record_usage(config_name)
+            
+            self.status_var.set(f"✅ 已切换到配置: {config_name}")
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"切换配置失败:\n{str(e)}")
+            self.orchestrator = None
     
     def _reset(self):
         """重置状态"""

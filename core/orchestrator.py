@@ -9,6 +9,10 @@
 
 状态机管理：
 IDLE → ANALYZING → TEACHING → QA → TEACHING (循环)
+
+新增功能：
+- 进度持久化：自动保存和加载学习进度
+- 智能恢复：检测已有分析结果，避免重复分析
 """
 
 import os
@@ -40,6 +44,7 @@ class AgentOrchestrator:
     3. 文件IO操作（生成和更新Markdown文件）
     4. 状态管理
     5. 错误处理
+    6. 进度持久化和恢复
     """
     
     def __init__(
@@ -96,14 +101,21 @@ class AgentOrchestrator:
         # 文件路径
         self.overview_path = self.project_path / "overview.md"
         self.note_dir = self.project_path / "note"
+        self.progress_file = self.project_path / ".learning_progress.json"  # 进度记录文件
         
         # 当前状态
         self.current_topic: Optional[Dict] = None
         self.analysis_result: Optional[Dict] = None
+        
+        # 🆕 自动加载已有进度
+        self._load_existing_progress()
     
-    def analyze_project(self) -> Dict:
+    def analyze_project(self, force: bool = False) -> Dict:
         """
         分析Java项目并生成overview.md
+        
+        Args:
+            force: 是否强制重新分析（忽略已有的overview.md）
         
         Returns:
             分析结果字典
@@ -111,6 +123,15 @@ class AgentOrchestrator:
         Raises:
             RuntimeError: 分析失败时抛出
         """
+        # 🆕 检查是否需要分析
+        if not force and not self.should_analyze_project():
+            print("⏭️ 跳过项目分析（已有有效的分析结果）")
+            return {
+                'status': 'success',
+                'timestamp': datetime.now().isoformat(),
+                'restored': True
+            }
+        
         self.state = OrchestratorState.ANALYZING
         
         try:
@@ -141,7 +162,8 @@ class AgentOrchestrator:
             # 6. 保存分析结果
             self.analysis_result = {
                 'status': 'success',
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                'restored': False
             }
             
             self.state = OrchestratorState.IDLE
@@ -215,7 +237,10 @@ class AgentOrchestrator:
                 mastery_level=3
             )
             
-            # 9. 清除聊天历史（为问答环节准备）
+            # 🆕 9. 自动保存进度到文件
+            self._save_progress()
+            
+            # 10. 清除聊天历史（为问答环节准备）
             self.agent_mgr.clear_chat_history()
             
             self.state = OrchestratorState.QA
@@ -727,3 +752,136 @@ class AgentOrchestrator:
         after = overview_content[end_idx:]
         
         return before + new_progress + "\n\n" + after
+    
+    # ==================== 🆕 进度持久化方法 ====================
+    
+    def _load_existing_progress(self):
+        """
+        加载已有的学习进度
+        
+        策略：
+        1. 检查是否存在 .learning_progress.json 文件
+        2. 如果存在，加载进度到 ContextManager
+        3. 同时扫描 note/ 目录，自动识别已完成的知识点
+        4. 如果 overview.md 存在，标记项目已分析
+        """
+        try:
+            progress_loaded = False
+            
+            # 1. 尝试从进度文件加载
+            if self.progress_file.exists():
+                print(f"📂 检测到进度文件: {self.progress_file}")
+                self.context_mgr.progress_tracker.load_from_file(str(self.progress_file))
+                progress_loaded = True
+                
+                learned_count = len(self.context_mgr.progress_tracker.learned_topics)
+                print(f"✅ 已加载进度: {learned_count} 个知识点已完成")
+            
+            # 2. 扫描 note/ 目录，自动识别已完成的知识点
+            if self.note_dir.exists():
+                note_files = list(self.note_dir.glob("*.md"))
+                
+                # 提取知识点ID（文件名去掉 .md）
+                note_topic_ids = [f.stem for f in note_files]
+                
+                # 将note文件中的知识点标记为已完成（如果尚未标记）
+                newly_found = []
+                for topic_id in note_topic_ids:
+                    if topic_id not in self.context_mgr.progress_tracker.learned_topics:
+                        self.context_mgr.progress_tracker.learned_topics.append(topic_id)
+                        newly_found.append(topic_id)
+                
+                if newly_found:
+                    print(f"🔍 从 note/ 目录发现 {len(newly_found)} 个新知识点: {', '.join(newly_found)}")
+                    progress_loaded = True
+            
+            # 3. 检查 overview.md 是否存在
+            if self.overview_path.exists():
+                print(f"📄 检测到已有项目分析结果: {self.overview_path}")
+                self.analysis_result = {
+                    'status': 'success',
+                    'timestamp': datetime.now().isoformat(),
+                    'restored': True  # 标记为恢复的分析结果
+                }
+            
+            if progress_loaded:
+                # 重新计算进度百分比
+                progress = self.context_mgr.get_progress()
+                print(f"📊 当前学习进度: {progress['completed_topics']}/{progress['total_topics']} ({progress['progress_percentage']:.1f}%)")
+            else:
+                print("💡 未检测到历史进度，将从头开始学习")
+        
+        except Exception as e:
+            print(f"⚠️ 加载进度失败: {e}")
+            print("💡 将从头开始分析项目")
+    
+    def _save_progress(self):
+        """
+        保存当前学习进度到文件
+        
+        包括：
+        1. 已学习的知识点列表
+        2. 每个知识点的详细信息（完成时间、总结、掌握程度）
+        3. 整体进度百分比
+        """
+        try:
+            # 使用 ContextManager 的进度跟踪器保存
+            self.context_mgr.progress_tracker.save_to_file(str(self.progress_file))
+            print(f"💾 进度已保存: {self.progress_file}")
+        
+        except Exception as e:
+            print(f"⚠️ 保存进度失败: {e}")
+            # 不抛出异常，避免影响主流程
+    
+    def should_analyze_project(self) -> bool:
+        """
+        判断是否需要重新分析项目
+        
+        Returns:
+            True: 需要分析（overview.md不存在或无效）
+            False: 可以跳过分析（已有有效的overview.md）
+        """
+        # 1. 检查 overview.md 是否存在
+        if not self.overview_path.exists():
+            print("📝 overview.md 不存在，需要分析项目")
+            return True
+        
+        # 2. 检查 overview.md 是否为空
+        if self.overview_path.stat().st_size == 0:
+            print("📝 overview.md 为空，需要重新分析")
+            return True
+        
+        # 3. 检查是否包含错误信息
+        try:
+            with open(self.overview_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                if "❌ 项目分析失败" in content or "分析失败" in content:
+                    print("📝 overview.md 包含错误信息，需要重新分析")
+                    return True
+        except Exception as e:
+            print(f"⚠️ 读取 overview.md 失败: {e}")
+            return True
+        
+        # 4. 已有有效的分析结果，可以跳过
+        print("✅ 检测到有效的 overview.md，跳过项目分析")
+        return False
+    
+    def restore_analysis_if_needed(self) -> bool:
+        """
+        如果需要，恢复项目分析结果
+        
+        Returns:
+            True: 成功恢复或无需恢复
+            False: 恢复失败
+        """
+        if not self.should_analyze_project():
+            # 已有有效的分析结果，直接返回
+            return True
+        
+        # 需要分析，调用 analyze_project
+        try:
+            self.analyze_project()
+            return True
+        except Exception as e:
+            print(f"❌ 恢复分析失败: {e}")
+            return False
