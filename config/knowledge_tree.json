@@ -1,0 +1,82 @@
+[
+  {
+    "id": "core_java",
+    "title": "Java核心基础",
+    "description": "Java语言的核心特性，包括面向对象编程、集合框架、异常处理、泛型等基础知识",
+    "difficulty": 1,
+    "prerequisites": [],
+    "keywords": ["class", "interface", "collection", "exception", "generic", "面向对象", "集合", "异常"]
+  },
+  {
+    "id": "maven_basics",
+    "title": "Maven构建工具",
+    "description": "Maven项目构建工具的使用，包括pom.xml配置、依赖管理、生命周期等",
+    "difficulty": 2,
+    "prerequisites": ["core_java"],
+    "keywords": ["pom.xml", "dependency", "lifecycle", "插件", "依赖管理"]
+  },
+  {
+    "id": "spring_boot",
+    "title": "Spring Boot框架",
+    "description": "Spring Boot框架的核心概念和使用，包括自动配置、起步依赖、应用启动等",
+    "difficulty": 3,
+    "prerequisites": ["core_java", "maven_basics"],
+    "keywords": ["SpringBootApplication", "自动配置", "starter", "bean", "依赖注入"]
+  },
+  {
+    "id": "spring_boot_web",
+    "title": "Spring Boot Web开发",
+    "description": "基于Spring Boot的Web应用开发，包括RESTful API、Controller、RequestMapping等",
+    "difficulty": 4,
+    "prerequisites": ["spring_boot"],
+    "keywords": ["RestController", "RequestMapping", "GET", "POST", "API", "控制器"]
+  },
+  {
+    "id": "spring_data_jpa",
+    "title": "Spring Data JPA",
+    "description": "使用Spring Data JPA进行数据库操作，包括实体映射、Repository、查询方法等",
+    "difficulty": 4,
+    "prerequisites": ["spring_boot"],
+    "keywords": ["Entity", "Repository", "JpaRepository", "数据库", "ORM", "持久化"]
+  },
+  {
+    "id": "spring_security",
+    "title": "Spring Security安全框架",
+    "description": "Spring Security的使用，包括认证、授权、JWT令牌、安全配置等",
+    "difficulty": 5,
+    "prerequisites": ["spring_boot", "spring_boot_web"],
+    "keywords": ["Security", "认证", "授权", "JWT", "Token", "Filter"]
+  },
+  {
+    "id": "mybatis",
+    "title": "MyBatis持久层框架",
+    "description": "MyBatis框架的使用，包括SQL映射、动态SQL、缓存机制等",
+    "difficulty": 4,
+    "prerequisites": ["spring_boot"],
+    "keywords": ["Mapper", "SQL", "XML", "动态SQL", "缓存"]
+  },
+  {
+    "id": "redis_integration",
+    "title": "Redis缓存集成",
+    "description": "在Spring Boot中集成Redis，包括缓存配置、RedisTemplate使用、分布式锁等",
+    "difficulty": 5,
+    "prerequisites": ["spring_boot"],
+    "keywords": ["Redis", "缓存", "RedisTemplate", "分布式锁", "序列化"]
+  },
+  {
+    "id": "spring_cloud_basics",
+    "title": "Spring Cloud微服务基础",
+    "description": "Spring Cloud微服务架构基础，包括服务注册发现、配置中心、网关等",
+    "difficulty": 6,
+    "prerequisites": ["spring_boot", "spring_boot_web"],
+    "keywords": ["Eureka", "Nacos", "Gateway", "配置中心", "微服务"]
+  },
+  {
+    "id": "testing",
+    "title": "单元测试与集成测试",
+    "description": "使用JUnit和Mockito进行测试，包括单元测试、集成测试、测试覆盖率等",
+    "difficulty": 3,
+    "prerequisites": ["spring_boot"],
+    "keywords": ["JUnit", "Mockito", "Test", "单元测试", "集成测试"]
+  }
+]
