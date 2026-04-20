@@ -80,7 +80,8 @@ class AgentOrchestrator:
                 api_key=api_key,
                 base_url=base_url,
                 model_name=model_name,
-                temperature=temperature
+                temperature=temperature,
+                project_path=str(self.project_path)
             )
             
             self.context_mgr = ContextManager(
@@ -298,6 +299,33 @@ class AgentOrchestrator:
             进度信息字典
         """
         return self.context_mgr.get_progress()
+    
+    def get_token_usage(self) -> Dict:
+        """
+        获取token使用情况
+        
+        Returns:
+            token使用信息字典
+        """
+        return self.agent_mgr.token_tracker.get_total_usage()
+    
+    def get_token_records(self) -> List[Dict]:
+        """
+        获取token使用记录列表
+        
+        Returns:
+            token使用记录列表
+        """
+        return self.agent_mgr.token_tracker.get_records()
+    
+    def get_token_report(self) -> str:
+        """
+        获取token使用报告
+        
+        Returns:
+            格式化的token使用报告
+        """
+        return self.agent_mgr.token_tracker.generate_report()
     
     def get_current_state(self) -> str:
         """获取当前状态"""

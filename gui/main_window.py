@@ -148,6 +148,70 @@ class MainWindow:
         )
         self.progress_details.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
+        # Tab 4: Token消耗
+        token_frame = ttk.Frame(self.notebook)
+        self.notebook.add(token_frame, text="💰 Token消耗")
+        
+        # Token统计信息
+        self.token_stats_label = ttk.Label(
+            token_frame,
+            text="尚未产生Token消耗",
+            font=("Microsoft YaHei", 12)
+        )
+        self.token_stats_label.pack(pady=10)
+        
+        # Token消耗表格
+        token_table_frame = ttk.Frame(token_frame)
+        token_table_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # 创建Treeview表格
+        columns = ("时间", "操作", "模型", "输入Token", "输出Token", "总Token")
+        self.token_tree = ttk.Treeview(
+            token_table_frame,
+            columns=columns,
+            show="headings",
+            height=15
+        )
+        
+        # 定义列
+        self.token_tree.heading("时间", text="时间")
+        self.token_tree.heading("操作", text="操作")
+        self.token_tree.heading("模型", text="模型")
+        self.token_tree.heading("输入Token", text="输入Token")
+        self.token_tree.heading("输出Token", text="输出Token")
+        self.token_tree.heading("总Token", text="总Token")
+        
+        # 设置列宽
+        self.token_tree.column("时间", width=150, anchor=tk.CENTER)
+        self.token_tree.column("操作", width=120, anchor=tk.CENTER)
+        self.token_tree.column("模型", width=120, anchor=tk.CENTER)
+        self.token_tree.column("输入Token", width=100, anchor=tk.E)
+        self.token_tree.column("输出Token", width=100, anchor=tk.E)
+        self.token_tree.column("总Token", width=100, anchor=tk.E)
+        
+        # 添加滚动条
+        token_scrollbar = ttk.Scrollbar(token_table_frame, orient=tk.VERTICAL, command=self.token_tree.yview)
+        self.token_tree.configure(yscrollcommand=token_scrollbar.set)
+        
+        self.token_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        token_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Token报告按钮
+        token_btn_frame = ttk.Frame(token_frame)
+        token_btn_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        ttk.Button(
+            token_btn_frame,
+            text="📄 生成Token报告",
+            command=self._show_token_report
+        ).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(
+            token_btn_frame,
+            text="🗑️ 清空记录",
+            command=self._clear_token_records
+        ).pack(side=tk.LEFT, padx=5)
+        
         # ==================== 状态栏 ====================
         status_frame = ttk.Frame(self.root, padding=5)
         status_frame.pack(fill=tk.X, side=tk.BOTTOM)
@@ -299,6 +363,9 @@ class MainWindow:
                 self.root.after(0, lambda: self._update_markdown_display(content))
                 self.root.after(0, lambda: self.next_topic_btn.config(state=tk.NORMAL))
                 self.root.after(0, lambda: self.status_var.set("✅ 项目分析完成"))
+                
+                # 更新Token消耗显示
+                self.root.after(0, self._update_token_display)
             
         except Exception as e:
             error_msg = str(e)
@@ -345,6 +412,9 @@ class MainWindow:
             # 更新进度显示
             self.root.after(0, self._update_progress_display)
             
+            # 更新Token消耗显示
+            self.root.after(0, self._update_token_display)
+            
         except Exception as e:
             error_msg = str(e)
             self.root.after(0, lambda: messagebox.showerror("讲解失败", error_msg))
@@ -385,6 +455,9 @@ class MainWindow:
             
             # 切换到聊天视图
             self.root.after(0, lambda: self.notebook.select(1))
+            
+            # 更新Token消耗显示
+            self.root.after(0, self._update_token_display)
             
         except Exception as e:
             error_msg = str(e)
@@ -539,7 +612,100 @@ class MainWindow:
         self.progress_details.delete(1.0, tk.END)
         self.progress_details.config(state=tk.DISABLED)
         
+        # 重置Token显示
+        self.token_stats_label.config(text="尚未产生Token消耗")
+        for item in self.token_tree.get_children():
+            self.token_tree.delete(item)
+        
         self.status_var.set("✅ 已重置")
+    
+    def _update_token_display(self):
+        """更新Token消耗显示"""
+        if not self.orchestrator:
+            return
+        
+        try:
+            token_usage = self.orchestrator.get_token_usage()
+            records = self.orchestrator.get_token_records()
+            
+            # 更新统计信息
+            if token_usage['call_count'] > 0:
+                stats_text = (
+                    f"总调用次数: {token_usage['call_count']} 次  |  "
+                    f"总Token: {token_usage['total_tokens']:,}"
+                )
+                self.token_stats_label.config(text=stats_text)
+            else:
+                self.token_stats_label.config(text="尚未产生Token消耗")
+            
+            # 清空表格
+            for item in self.token_tree.get_children():
+                self.token_tree.delete(item)
+            
+            # 填充表格数据（最新的在前）
+            for record in reversed(records):
+                # 格式化时间
+                from datetime import datetime
+                timestamp = datetime.fromisoformat(record['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+                
+                self.token_tree.insert(
+                    "",
+                    tk.END,
+                    values=(
+                        timestamp,
+                        record['operation'],
+                        record['model'],
+                        f"{record['prompt_tokens']:,}",
+                        f"{record['completion_tokens']:,}",
+                        f"{record['total_tokens']:,}"
+                    )
+                )
+                
+        except Exception as e:
+            print(f"更新Token显示失败: {e}")
+    
+    def _show_token_report(self):
+        """显示Token消耗报告"""
+        if not self.orchestrator:
+            messagebox.showwarning("提示", "请先选择项目并配置模型")
+            return
+        
+        try:
+            report = self.orchestrator.get_token_report()
+            
+            # 在新窗口显示报告
+            report_window = tk.Toplevel(self.root)
+            report_window.title("Token消耗报告")
+            report_window.geometry("800x600")
+            report_window.transient(self.root)
+            
+            # 报告文本框
+            report_text = scrolledtext.ScrolledText(
+                report_window,
+                wrap=tk.WORD,
+                font=("Consolas", 10)
+            )
+            report_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            report_text.insert(tk.END, report)
+            report_text.config(state=tk.DISABLED)
+            
+            # 关闭按钮
+            ttk.Button(
+                report_window,
+                text="关闭",
+                command=report_window.destroy
+            ).pack(pady=10)
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"生成报告失败:\n{str(e)}")
+    
+    def _clear_token_records(self):
+        """清空Token记录"""
+        if messagebox.askyesno("确认", "确定要清空所有Token记录吗？"):
+            if self.orchestrator:
+                self.orchestrator.agent_mgr.token_tracker.clear_records()
+                self._update_token_display()
+                messagebox.showinfo("成功", "Token记录已清空")
     
     def _set_processing_state(self, processing: bool):
         """设置处理状态（禁用/启用按钮）"""

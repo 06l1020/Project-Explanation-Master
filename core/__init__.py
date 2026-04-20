@@ -5,12 +5,13 @@ Core模块 - Java项目分析智能体核心功能
 - AgentManager: LLM统一管理器
 - ContextManager: 上下文管理器（代码缓存+进度跟踪）
 - AgentOrchestrator: 业务流程编排器
-- ProjectAnalyzer: Java项目分析器
+- TokenUsageTracker: Token消耗记录器
 """
 
 from core.agent_manager import AgentManager
 from core.context_manager import ContextManager, CodeIndexCache, LearningProgressTracker
 from core.orchestrator import AgentOrchestrator, OrchestratorState
+from core.token_tracker import TokenUsageTracker, TokenUsageRecord
 
 __all__ = [
     'AgentManager',
@@ -18,5 +19,7 @@ __all__ = [
     'CodeIndexCache',
     'LearningProgressTracker',
     'AgentOrchestrator',
-    'OrchestratorState'
+    'OrchestratorState',
+    'TokenUsageTracker',
+    'TokenUsageRecord'
 ]

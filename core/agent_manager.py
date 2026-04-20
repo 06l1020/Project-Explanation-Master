@@ -9,6 +9,7 @@ from typing import Optional, Dict, Any, List
 from langchain_core.prompts import PromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from core.token_tracker import TokenUsageTracker
 
 
 class AgentManager:
@@ -20,6 +21,7 @@ class AgentManager:
     2. 提供四大专用Agent（项目分析、知识讲解、问答、进度更新）
     3. 管理提示词模板
     4. 支持动态切换模型
+    5. 记录token使用情况
     """
     
     def __init__(
@@ -27,7 +29,8 @@ class AgentManager:
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         model_name: str = "gpt-4",
-        temperature: float = 0.7
+        temperature: float = 0.7,
+        project_path: Optional[str] = None
     ):
         """
         初始化Agent管理器
@@ -37,6 +40,7 @@ class AgentManager:
             base_url: API基础URL，None则使用OpenAI官方端点
             model_name: 模型名称，默认gpt-4
             temperature: 温度参数，控制输出随机性
+            project_path: 项目路径（用于保存token记录）
         """
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
@@ -58,6 +62,9 @@ class AgentManager:
         
         # 聊天历史管理（用于问答Agent）
         self.chat_history: List[Dict[str, str]] = []
+        
+        # 初始化token追踪器
+        self.token_tracker = TokenUsageTracker(project_path=project_path)
     
     def _create_llm_client(self) -> ChatOpenAI:
         """
@@ -158,6 +165,18 @@ class AgentManager:
         )
         
         response = self.llm.invoke(prompt)
+        
+        # 记录token消耗
+        if hasattr(response, 'response_metadata') and 'token_usage' in response.response_metadata:
+            token_usage = response.response_metadata['token_usage']
+            self.token_tracker.add_record(
+                operation="项目分析",
+                model=self.model_name,
+                prompt_tokens=token_usage.get('prompt_tokens', 0),
+                completion_tokens=token_usage.get('completion_tokens', 0),
+                total_tokens=token_usage.get('total_tokens', 0)
+            )
+        
         return response.content
     
     def teach_knowledge(
@@ -190,6 +209,18 @@ class AgentManager:
         )
         
         response = self.llm.invoke(prompt)
+        
+        # 记录token消耗
+        if hasattr(response, 'response_metadata') and 'token_usage' in response.response_metadata:
+            token_usage = response.response_metadata['token_usage']
+            self.token_tracker.add_record(
+                operation="知识点讲解",
+                model=self.model_name,
+                prompt_tokens=token_usage.get('prompt_tokens', 0),
+                completion_tokens=token_usage.get('completion_tokens', 0),
+                total_tokens=token_usage.get('total_tokens', 0)
+            )
+        
         return response.content
     
     def answer_question(
@@ -230,6 +261,17 @@ class AgentManager:
         response = self.llm.invoke(prompt)
         answer = response.content
         
+        # 记录token消耗
+        if hasattr(response, 'response_metadata') and 'token_usage' in response.response_metadata:
+            token_usage = response.response_metadata['token_usage']
+            self.token_tracker.add_record(
+                operation="问答",
+                model=self.model_name,
+                prompt_tokens=token_usage.get('prompt_tokens', 0),
+                completion_tokens=token_usage.get('completion_tokens', 0),
+                total_tokens=token_usage.get('total_tokens', 0)
+            )
+        
         # 更新聊天历史
         self.chat_history.append({
             "user": question,
@@ -265,6 +307,18 @@ class AgentManager:
         )
         
         response = self.llm.invoke(prompt)
+        
+        # 记录token消耗
+        if hasattr(response, 'response_metadata') and 'token_usage' in response.response_metadata:
+            token_usage = response.response_metadata['token_usage']
+            self.token_tracker.add_record(
+                operation="进度更新",
+                model=self.model_name,
+                prompt_tokens=token_usage.get('prompt_tokens', 0),
+                completion_tokens=token_usage.get('completion_tokens', 0),
+                total_tokens=token_usage.get('total_tokens', 0)
+            )
+        
         return response.content
     
     def clear_chat_history(self):
@@ -323,7 +377,7 @@ class AgentManager:
 
 ## 输出要求
 
-请严格按照以下Markdown格式输出（不要包含```markdown标记）：
+请严格按照以下格式输出（不要包含```
 
 # [项目名称] - Java企业级项目学习指南
 
@@ -432,7 +486,7 @@ class AgentManager:
 
 请以自然聊天的口吻，结合上述项目的实际代码，深入浅出地讲解这个知识点。
 
-### 输出格式（严格按照以下结构，使用Markdown格式）
+### 输出格式（严格按照以下结构，使用```
 
 # {topic_title}
 
@@ -483,7 +537,7 @@ class AgentManager:
 [如果项目缺少此功能，提供完整的从零实现步骤]
 
 **步骤1：** [步骤说明]
-```java
+``java
 [代码示例，包含中文注释]
 ```
 
@@ -596,7 +650,7 @@ class AgentManager:
 
 ### 代码示例
 [如果适用，提供代码示例]
-```java
+``java
 [代码，包含中文注释]
 ```
 
@@ -675,7 +729,7 @@ class AgentManager:
 3. [收获3]
 
 **关键代码：**
-```java
+``java
 [精简后的关键代码，包含注释]
 ```
 
