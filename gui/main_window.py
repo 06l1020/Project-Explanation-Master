@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.orchestrator import AgentOrchestrator, OrchestratorState
+from core.model_config_manager import get_config_manager, ModelConfigManager
 
 
 class MainWindow:
@@ -57,16 +58,32 @@ class MainWindow:
         self.project_path: Optional[str] = None
         self.is_processing = False
         
+        # 模型配置管理器
+        self.config_manager: ModelConfigManager = get_config_manager()
+        
         # API配置
         self.api_key_var = tk.StringVar()
         self.base_url_var = tk.StringVar(value="")
         self.model_name_var = tk.StringVar(value="gpt-4")
+        self.config_name_var = tk.StringVar(value="")  # 当前选中的配置名称
         
         # 创建界面
         self._create_widgets()
         
+        # 加载默认配置
+        self._load_default_config()
+        
         # 设置最小窗口大小
         self.root.minsize(1000, 700)
+    
+    def _load_default_config(self):
+        """加载默认配置"""
+        default_config = self.config_manager.get_default_config()
+        if default_config:
+            self.api_key_var.set(default_config.api_key)
+            self.base_url_var.set(default_config.base_url)
+            self.model_name_var.set(default_config.model_name)
+            self.config_name_var.set(default_config.name)
     
     def _create_widgets(self):
         """创建所有UI组件"""
@@ -84,8 +101,22 @@ class MainWindow:
         # 选择项目按钮
         ttk.Button(toolbar, text="📁 选择项目", command=self._select_project).pack(side=tk.LEFT, padx=5)
         
+        # 配置选择下拉框
+        ttk.Label(toolbar, text="模型配置:").pack(side=tk.LEFT, padx=(15, 5))
+        self.config_combo = ttk.Combobox(
+            toolbar,
+            textvariable=self.config_name_var,
+            state="readonly",
+            width=20
+        )
+        self.config_combo.pack(side=tk.LEFT, padx=5)
+        self.config_combo.bind('<<ComboboxSelected>>', self._on_config_selected)
+        
+        # 刷新配置列表
+        self._refresh_config_list()
+        
         # 模型配置按钮
-        ttk.Button(toolbar, text="⚙️ 模型配置", command=self._show_model_config).pack(side=tk.LEFT, padx=5)
+        ttk.Button(toolbar, text="⚙️ 管理配置", command=self._show_model_config).pack(side=tk.LEFT, padx=5)
         
         # ==================== 内容显示区域 (3/4) ====================
         content_frame = ttk.Frame(self.root)
@@ -314,7 +345,7 @@ class MainWindow:
             if not api_key:
                 messagebox.showwarning(
                     "警告",
-                    "请先配置API密钥！\n点击'模型配置'按钮进行设置。"
+                    "请先配置API密钥！\n点击'管理配置'按钮进行设置。"
                 )
                 return
             
@@ -328,6 +359,12 @@ class MainWindow:
                 kwargs['base_url'] = self.base_url_var.get()
             
             self.orchestrator = AgentOrchestrator(**kwargs)
+            
+            # 记录配置使用
+            config_name = self.config_name_var.get()
+            if config_name:
+                self.config_manager.record_usage(config_name)
+            
             self.status_var.set("✅ 编排器初始化成功")
             
         except Exception as e:
@@ -539,52 +576,261 @@ class MainWindow:
             print(f"更新进度显示失败: {e}")
     
     def _show_model_config(self):
-        """显示模型配置对话框"""
+        """显示模型配置管理对话框"""
         config_window = tk.Toplevel(self.root)
-        config_window.title("模型配置")
-        config_window.geometry("500x300")
+        config_window.title("模型配置管理")
+        config_window.geometry("800x600")
         config_window.transient(self.root)
         config_window.grab_set()
         
+        # ==================== 左侧：配置列表 ====================
+        left_frame = ttk.Frame(config_window)
+        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        ttk.Label(left_frame, text="已保存的配置:", font=("Microsoft YaHei", 10, "bold")).pack(anchor=tk.W)
+        
+        # 配置列表
+        list_frame = ttk.Frame(left_frame)
+        list_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        config_listbox = tk.Listbox(list_frame, font=("Microsoft YaHei", 10), height=15)
+        config_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        list_scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=config_listbox.yview)
+        list_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        config_listbox.configure(yscrollcommand=list_scrollbar.set)
+        
+        # 填充配置列表
+        all_configs = self.config_manager.get_all_configs()
+        default_config = self.config_manager.get_default_config()
+        
+        for config in all_configs:
+            display_name = config['name']
+            if default_config and config['name'] == default_config.name:
+                display_name += " ⭐ (默认)"
+            config_listbox.insert(tk.END, display_name)
+        
+        # 选择第一个配置
+        if all_configs:
+            config_listbox.selection_set(0)
+        
+        # 列表操作按钮
+        list_btn_frame = ttk.Frame(left_frame)
+        list_btn_frame.pack(fill=tk.X, pady=5)
+        
+        def on_select_config():
+            """选中配置"""
+            selection = config_listbox.curselection()
+            if not selection:
+                return
+            
+            idx = selection[0]
+            config = all_configs[idx]
+            
+            # 填充到编辑区
+            edit_name_var.set(config['name'])
+            edit_api_key_var.set(config['api_key'])
+            edit_base_url_var.set(config['base_url'])
+            edit_model_name_var.set(config['model_name'])
+        
+        def on_set_default():
+            """设为默认"""
+            selection = config_listbox.curselection()
+            if not selection:
+                messagebox.showwarning("提示", "请先选择一个配置")
+                return
+            
+            idx = selection[0]
+            config_name = all_configs[idx]['name']
+            
+            if self.config_manager.set_default_config(config_name):
+                messagebox.showinfo("成功", f"已将 '{config_name}' 设为默认配置")
+                config_window.destroy()
+                self._show_model_config()  # 重新打开以刷新显示
+        
+        def on_delete_config():
+            """删除配置"""
+            selection = config_listbox.curselection()
+            if not selection:
+                messagebox.showwarning("提示", "请先选择一个配置")
+                return
+            
+            idx = selection[0]
+            config_name = all_configs[idx]['name']
+            
+            if messagebox.askyesno("确认", f"确定要删除配置 '{config_name}' 吗？"):
+                if self.config_manager.remove_config(config_name):
+                    messagebox.showinfo("成功", f"已删除配置 '{config_name}'")
+                    config_window.destroy()
+                    self._show_model_config()  # 重新打开以刷新显示
+                else:
+                    messagebox.showerror("错误", "删除配置失败")
+        
+        ttk.Button(list_btn_frame, text="📝 编辑", command=on_select_config).pack(side=tk.LEFT, padx=5)
+        ttk.Button(list_btn_frame, text="⭐ 设为默认", command=on_set_default).pack(side=tk.LEFT, padx=5)
+        ttk.Button(list_btn_frame, text="🗑️ 删除", command=on_delete_config).pack(side=tk.LEFT, padx=5)
+        
+        # ==================== 右侧：编辑区 ====================
+        right_frame = ttk.Frame(config_window)
+        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        ttk.Label(right_frame, text="配置详情:", font=("Microsoft YaHei", 10, "bold")).pack(anchor=tk.W)
+        
+        # 编辑表单
+        form_frame = ttk.LabelFrame(right_frame, text="编辑配置", padding=10)
+        form_frame.pack(fill=tk.X, pady=10)
+        
+        # 配置名称
+        ttk.Label(form_frame, text="配置名称:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        edit_name_var = tk.StringVar()
+        ttk.Entry(form_frame, textvariable=edit_name_var, width=35).grid(row=0, column=1, padx=5, pady=5)
+        
         # API Key
-        ttk.Label(config_window, text="API Key:").grid(row=0, column=0, sticky=tk.W, padx=10, pady=10)
-        api_key_entry = ttk.Entry(config_window, textvariable=self.api_key_var, width=40, show="*")
-        api_key_entry.grid(row=0, column=1, padx=10, pady=10)
+        ttk.Label(form_frame, text="API Key:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        edit_api_key_var = tk.StringVar()
+        ttk.Entry(form_frame, textvariable=edit_api_key_var, width=35, show="*").grid(row=1, column=1, padx=5, pady=5)
         
         # Base URL
-        ttk.Label(config_window, text="Base URL (可选):").grid(row=1, column=0, sticky=tk.W, padx=10, pady=10)
-        base_url_entry = ttk.Entry(config_window, textvariable=self.base_url_var, width=40)
-        base_url_entry.grid(row=1, column=1, padx=10, pady=10)
-        ttk.Label(config_window, text="例: http://localhost:11434/v1", foreground="gray").grid(row=2, column=1, sticky=tk.W, padx=10)
+        ttk.Label(form_frame, text="Base URL:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        edit_base_url_var = tk.StringVar()
+        ttk.Entry(form_frame, textvariable=edit_base_url_var, width=35).grid(row=2, column=1, padx=5, pady=5)
+        ttk.Label(form_frame, text="例: http://localhost:11434/v1", foreground="gray", font=("Microsoft YaHei", 8)).grid(row=3, column=1, sticky=tk.W, padx=5)
         
         # Model Name
-        ttk.Label(config_window, text="模型名称:").grid(row=3, column=0, sticky=tk.W, padx=10, pady=10)
+        ttk.Label(form_frame, text="模型名称:").grid(row=4, column=0, sticky=tk.W, pady=5)
+        edit_model_name_var = tk.StringVar(value="gpt-4")
         model_combo = ttk.Combobox(
-            config_window,
-            textvariable=self.model_name_var,
+            form_frame,
+            textvariable=edit_model_name_var,
             values=["gpt-4", "gpt-3.5-turbo", "gpt-4-turbo", "custom"],
-            width=37
+            width=32
         )
-        model_combo.grid(row=3, column=1, padx=10, pady=10)
+        model_combo.grid(row=4, column=1, padx=5, pady=5)
         
-        # 保存按钮
-        def save_config():
-            if not self.api_key_var.get():
+        # 底部按钮
+        btn_frame = ttk.Frame(right_frame)
+        btn_frame.pack(fill=tk.X, pady=20)
+        
+        def on_save_config():
+            """保存配置"""
+            name = edit_name_var.get().strip()
+            api_key = edit_api_key_var.get().strip()
+            base_url = edit_base_url_var.get().strip()
+            model_name = edit_model_name_var.get().strip()
+            
+            if not name:
+                messagebox.showwarning("警告", "配置名称不能为空")
+                return
+            
+            if not api_key:
                 messagebox.showwarning("警告", "API Key不能为空")
                 return
             
-            config_window.destroy()
-            messagebox.showinfo("成功", "配置已保存")
-            
-            # 如果已有orchestrator，更新配置
-            if self.orchestrator:
-                self.orchestrator.update_model_config(
-                    api_key=self.api_key_var.get(),
-                    base_url=self.base_url_var.get() or None,
-                    model_name=self.model_name_var.get()
+            # 保存配置
+            try:
+                self.config_manager.add_config(
+                    name=name,
+                    api_key=api_key,
+                    base_url=base_url,
+                    model_name=model_name,
+                    set_as_default=False
                 )
+                
+                # 记录使用
+                self.config_manager.record_usage(name)
+                
+                messagebox.showinfo("成功", f"配置 '{name}' 已保存")
+                
+                # 更新主界面的配置列表
+                self._refresh_config_list()
+                self.config_name_var.set(name)
+                self.api_key_var.set(api_key)
+                self.base_url_var.set(base_url)
+                self.model_name_var.set(model_name)
+                
+                config_window.destroy()
+                
+            except Exception as e:
+                messagebox.showerror("错误", f"保存配置失败:\n{str(e)}")
         
-        ttk.Button(config_window, text="保存", command=save_config).grid(row=4, column=1, sticky=tk.E, padx=10, pady=20)
+        def on_close():
+            """关闭对话框"""
+            config_window.destroy()
+        
+        ttk.Button(btn_frame, text="💾 保存配置", command=on_save_config).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="❌ 取消", command=on_close).pack(side=tk.LEFT, padx=5)
+        
+        # 使用说明
+        help_text = scrolledtext.ScrolledText(
+            right_frame,
+            wrap=tk.WORD,
+            font=("Microsoft YaHei", 9),
+            height=12
+        )
+        help_text.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        help_content = """💡 使用说明：
+
+1. 添加新配置：
+   - 填写配置名称、API Key等信息
+   - 点击"保存配置"按钮
+
+2. 编辑现有配置：
+   - 从左侧列表选择配置
+   - 点击"编辑"按钮
+   - 修改后点击"保存配置"
+
+3. 设为默认配置：
+   - 选择配置后点击"设为默认"
+   - 程序启动时自动加载默认配置
+
+4. 删除配置：
+   - 选择配置后点击"删除"
+   - 确认后永久删除
+
+5. 快速切换：
+   - 在主界面工具栏使用下拉框
+   - 选择配置即可自动加载
+
+常用配置示例：
+• OpenAI GPT-4
+  Base URL: (留空)
+  Model: gpt-4
+
+• Ollama 本地
+  Base URL: http://localhost:11434/v1
+  Model: llama2
+
+• DeepSeek
+  Base URL: https://api.deepseek.com/v1
+  Model: deepseek-chat
+"""
+        help_text.insert(tk.END, help_content)
+        help_text.config(state=tk.DISABLED)
+    
+    def _refresh_config_list(self):
+        """刷新配置列表"""
+        config_names = self.config_manager.get_config_names()
+        self.config_combo['values'] = config_names
+        
+        # 选择默认配置
+        default_config = self.config_manager.get_default_config()
+        if default_config and default_config.name in config_names:
+            self.config_combo.set(default_config.name)
+            self.config_name_var.set(default_config.name)
+    
+    def _on_config_selected(self, event=None):
+        """配置选择变更时的处理"""
+        selected_name = self.config_name_var.get()
+        if not selected_name:
+            return
+        
+        config = self.config_manager.get_config(selected_name)
+        if config:
+            self.api_key_var.set(config.api_key)
+            self.base_url_var.set(config.base_url)
+            self.model_name_var.set(config.model_name)
+            self.status_var.set(f"✅ 已加载配置: {config.name}")
     
     def _reset(self):
         """重置状态"""
@@ -754,6 +1000,20 @@ def main():
     x = (root.winfo_screenwidth() // 2) - (width // 2)
     y = (root.winfo_screenheight() // 2) - (height // 2)
     root.geometry(f'+{x}+{y}')
+    
+    # 定义窗口关闭时的清理函数
+    def on_closing():
+        """窗口关闭时的资源清理"""
+        try:
+            if app.orchestrator is not None:
+                app.orchestrator.close()
+        except Exception as e:
+            print(f"⚠️ 清理资源时出现警告: {e}")
+        finally:
+            root.destroy()
+    
+    # 绑定窗口关闭事件
+    root.protocol("WM_DELETE_WINDOW", on_closing)
     
     root.mainloop()
 

@@ -66,6 +66,22 @@ class AgentManager:
         # 初始化token追踪器
         self.token_tracker = TokenUsageTracker(project_path=project_path)
     
+    def __del__(self):
+        """
+        析构函数：清理LLM客户端资源
+        
+        防止httpx客户端资源泄漏警告
+        """
+        try:
+            # 安全关闭LLM客户端
+            if hasattr(self, 'llm') and self.llm is not None:
+                if hasattr(self.llm, 'client') and self.llm.client is not None:
+                    if hasattr(self.llm.client, 'close'):
+                        self.llm.client.close()
+        except Exception:
+            # 忽略清理过程中的错误
+            pass
+    
     def _create_llm_client(self) -> ChatOpenAI:
         """
         创建LLM客户端

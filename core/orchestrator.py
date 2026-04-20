@@ -338,6 +338,23 @@ class AgentOrchestrator:
         self.agent_mgr.clear_chat_history()
         print("🔄 编排器已重置")
     
+    def close(self):
+        """
+        关闭编排器，释放所有资源
+        
+        应该在应用退出时调用，防止资源泄漏
+        """
+        try:
+            # 关闭AgentManager的LLM客户端
+            if hasattr(self, 'agent_mgr') and self.agent_mgr is not None:
+                if hasattr(self.agent_mgr, 'llm') and self.agent_mgr.llm is not None:
+                    if hasattr(self.agent_mgr.llm, 'client') and self.agent_mgr.llm.client is not None:
+                        if hasattr(self.agent_mgr.llm.client, 'close'):
+                            self.agent_mgr.llm.client.close()
+                            print("✅ LLM客户端资源已释放")
+        except Exception as e:
+            print(f"⚠️ 关闭资源时出现警告: {e}")
+    
     # ==================== 私有方法 ====================
     
     def _get_project_basic_info(self) -> Dict:
